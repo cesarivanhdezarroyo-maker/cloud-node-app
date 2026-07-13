@@ -1,0 +1,58 @@
+name: Docker CI/CD
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+
+  crear_imagen:
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Descargar código
+        uses: actions/checkout@v4
+
+      - name: Login en GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GH_TOKEN }}
+
+      - name: Construir imagen Docker
+        run: |
+          docker build -t ghcr.io/${{ github.repository_owner }}/cloud-node-app:latest .
+
+      - name: Subir imagen
+        run: |
+          docker push ghcr.io/${{ github.repository_owner }}/cloud-node-app:latest
+
+  desplegar:
+
+    needs: crear_imagen
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Desplegar en AWS
+        uses: appleboy/ssh-action@v1.0.3
+
+        with:
+
+          host: ${{ secrets.HOST }}
+
+          username: ${{ secrets.USERNAME }}
+
+          key: ${{ secrets.SSH_KEY }}
+
+          script: |
+            docker login ghcr.io -u ${{ github.actor }} -p ${{ secrets.GH_TOKEN }}
+            docker pull ghcr.io/${{ github.repository_owner }}/cloud-node-app:latest
+            docker stop cloud-node-app || true
+            docker rm cloud-node-app || true
+            docker run -d --name cloud-node-app -p 80:3000 ghcr.io/${{ github.repository_owner }}/cloud-node-app:latest
